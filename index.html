@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Music Visualizer</title>
+
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        input {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+
+<input type="file" id="audioFile" accept="audio/*">
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const input = document.getElementById("audioFile");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let audio;
+let analyser;
+let data;
+
+input.addEventListener("change", function () {
+
+    const file = this.files[0];
+
+    if (!file) return;
+
+    audio = new Audio(URL.createObjectURL(file));
+    audio.controls = true;
+    audio.style.position = "fixed";
+    audio.style.bottom = "20px";
+    audio.style.left = "20px";
+
+    document.body.appendChild(audio);
+
+    const audioContext = new AudioContext();
+
+    const source = audioContext.createMediaElementSource(audio);
+
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+
+    source.connect(analyser);
+    analyser.connect(audioContext.destination);
+
+    data = new Uint8Array(analyser.frequencyBinCount);
+
+    audio.play();
+
+    animate();
+});
+
+function animate() {
+
+    requestAnimationFrame(animate);
+
+    analyser.getByteFrequencyData(data);
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const barWidth = canvas.width / data.length;
+
+    for (let i = 0; i < data.length; i++) {
+
+        const height = data[i] * 2;
+
+        ctx.fillStyle =
+            `hsl(${i * 4}, 100%, 50%)`;
+
+        ctx.fillRect(
+            i * barWidth,
+            canvas.height - height,
+            barWidth - 2,
+            height
+        );
+    }
+}
+</script>
+
+</body>
+</html>
