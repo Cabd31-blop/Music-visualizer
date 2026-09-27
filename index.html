@@ -4,36 +4,50 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Music Visualizer</title>
+<title>Music Visualizer V2</title>
 
 <style>
-body {
-    margin: 0;
-    background: black;
-    color: white;
-    font-family: Arial;
-    text-align: center;
-}
+    * {
+        box-sizing: border-box;
+    }
 
-button {
-    margin-top: 20px;
-    padding: 15px 25px;
-    font-size: 18px;
-    border-radius: 10px;
-    border: none;
-}
+    body {
+        margin: 0;
+        background: #000;
+        color: white;
+        font-family: Arial, sans-serif;
+        overflow: hidden;
+        text-align: center;
+    }
 
-canvas {
-    display: block;
-    width: 100%;
-    height: 70vh;
-}
+    h1 {
+        margin: 25px 0 10px;
+        font-size: 30px;
+    }
+
+    #start {
+        padding: 14px 24px;
+        border: none;
+        border-radius: 30px;
+        background: white;
+        color: black;
+        font-size: 17px;
+        font-weight: bold;
+    }
+
+    canvas {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        height: 80vh;
+    }
 </style>
 </head>
 
 <body>
 
-<h2>🎵 Music Visualizer</h2>
+<h1>🎵 Music Visualizer</h1>
 
 <button id="start">🎤 Activer le micro</button>
 
@@ -41,29 +55,40 @@ canvas {
 
 <script>
 
-const button = document.getElementById("start");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const button = document.getElementById("start");
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight * 0.7;
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight * 0.78;
+}
+
+resize();
+window.addEventListener("resize", resize);
 
 button.addEventListener("click", async () => {
 
     try {
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true
-        });
+        const stream =
+            await navigator.mediaDevices.getUserMedia({
+                audio: true
+            });
 
-        const audioContext =
-            new (window.AudioContext ||
-            window.webkitAudioContext)();
+        const AudioContext =
+            window.AudioContext ||
+            window.webkitAudioContext;
+
+        const audioContext = new AudioContext();
+
+        await audioContext.resume();
 
         const analyser =
             audioContext.createAnalyser();
 
-        analyser.fftSize = 256;
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.75;
 
         const microphone =
             audioContext.createMediaStreamSource(stream);
@@ -75,13 +100,69 @@ button.addEventListener("click", async () => {
 
         button.style.display = "none";
 
+        animate();
+
         function animate() {
 
             requestAnimationFrame(animate);
 
             analyser.getByteFrequencyData(data);
 
-            ctx.fillStyle = "rgba(0,0,0,0.25)";
+            // =========================
+            // MESURE DES FRÉQUENCES
+            // =========================
+
+            let bass = 0;
+            let mid = 0;
+            let treble = 0;
+
+            // Basses
+            for (let i = 1; i < 25; i++) {
+                bass += data[i];
+            }
+
+            bass /= 24;
+
+            // Médiums
+            for (let i = 25; i < 180; i++) {
+                mid += data[i];
+            }
+
+            mid /= 155;
+
+            // Aigus
+            for (let i = 180; i < 700; i++) {
+                treble += data[i];
+            }
+
+            treble /= 520;
+
+            // =========================
+            // FILTRE ANTI-BRUIT
+            // =========================
+
+            const threshold = 12;
+
+            if (bass < threshold) bass = 0;
+            if (mid < threshold) mid = 0;
+            if (treble < threshold) treble = 0;
+
+            // =========================
+            // FOND RÉACTIF
+            // =========================
+
+            const energy =
+                (bass + mid + treble) / 3;
+
+            const glow =
+                Math.min(energy * 1.5, 80);
+
+            ctx.fillStyle = `rgb(
+                ${Math.min(glow * 0.4, 30)},
+                0,
+                ${Math.min(glow * 0.8, 60)}
+            )`;
+
             ctx.fillRect(
                 0,
                 0,
@@ -89,37 +170,141 @@ button.addEventListener("click", async () => {
                 canvas.height
             );
 
-            const barWidth =
-                canvas.width / data.length;
+            // =========================
+            // BARRES
+            // =========================
 
-            for (let i = 0; i < data.length; i++) {
+            const bars = 48;
+            const width = canvas.width / bars;
 
+            for (let i = 0; i < bars; i++) {
+
+                // Échelle logarithmique
+                const start = Math.floor(
+                    Math.pow(
+                        data.length,
+                        i / bars
+                    )
+                );
+
+                const end = Math.max(
+                    start + 1,
+                    Math.floor(
+                        Math.pow(
+                            data.length,
+                            (i + 1) / bars
+                        )
+                    )
+                );
+
+                let total = 0;
+                let count = 0;
+
+                for (
+                    let j = start;
+                    j < end && j < data.length;
+                    j++
+                ) {
+                    total += data[j];
+                    count++;
+                }
+
+                let value =
+                    count ? total / count : 0;
+
+                // Anti-bruit
+                if (value < threshold) {
+                    value = 0;
+                }
+
+                // Amplification
                 const height =
-                    data[i] * 2;
+                    Math.min(
+                        value * 2.8,
+                        canvas.height * 0.9
+                    );
 
+                // Rouge → jaune → vert → bleu → violet
                 const hue =
-                    i * 360 / data.length;
+                    i * 280 / (bars - 1);
+
+                ctx.shadowBlur = 15;
+                ctx.shadowColor =
+                    `hsl(${hue},100%,50%)`;
 
                 ctx.fillStyle =
                     `hsl(${hue},100%,50%)`;
 
                 ctx.fillRect(
-                    i * barWidth,
+                    i * width,
                     canvas.height - height,
-                    barWidth - 2,
+                    width - 3,
                     height
                 );
             }
-        }
 
-        animate();
+            ctx.shadowBlur = 0;
+
+            // =========================
+            // CERCLE CENTRAL
+            // =========================
+
+            const radius =
+                40 + bass * 1.2;
+
+            const centerX =
+                canvas.width / 2;
+
+            const centerY =
+                canvas.height / 2;
+
+            const gradient =
+                ctx.createRadialGradient(
+                    centerX,
+                    centerY,
+                    5,
+                    centerX,
+                    centerY,
+                    radius
+                );
+
+            gradient.addColorStop(
+                0,
+                "white"
+            );
+
+            gradient.addColorStop(
+                0.3,
+                "rgba(0,150,255,0.8)"
+            );
+
+            gradient.addColorStop(
+                1,
+                "rgba(120,0,255,0)"
+            );
+
+            ctx.fillStyle = gradient;
+
+            ctx.beginPath();
+
+            ctx.arc(
+                centerX,
+                centerY,
+                radius,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fill();
+        }
 
     } catch (error) {
 
-        alert(
-            "Impossible d'utiliser le micro. Vérifie l'autorisation du microphone dans Safari."
-        );
+        console.error(error);
 
+        alert(
+            "Impossible d'accéder au microphone. Vérifie l'autorisation dans Safari."
+        );
     }
 
 });
