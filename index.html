@@ -22,6 +22,7 @@ body {
 
 h1 {
     margin: 25px 0;
+    font-size: 30px;
 }
 
 button {
@@ -62,7 +63,6 @@ function resize() {
 }
 
 resize();
-
 window.addEventListener("resize", resize);
 
 
@@ -91,8 +91,7 @@ button.addEventListener("click", async () => {
             audioContext.createAnalyser();
 
         analyser.fftSize = 4096;
-
-        analyser.smoothingTimeConstant = 0.65;
+        analyser.smoothingTimeConstant = 0.72;
 
         const microphone =
             audioContext.createMediaStreamSource(stream);
@@ -105,22 +104,17 @@ button.addEventListener("click", async () => {
         const sampleRate =
             audioContext.sampleRate;
 
-        button.style.display = "none";
-
-
-        // ============================
-        // PARAMÈTRES
-        // ============================
-
         const bars = 50;
 
         const minFreq = 60;
         const maxFreq = 16000;
 
+        // Niveau de référence de chaque barre
+        const baseline =
+            new Array(bars).fill(8);
 
-        // ============================
-        // CONVERSION FRÉQUENCE → FFT
-        // ============================
+        button.style.display = "none";
+
 
         function frequencyToBin(freq) {
 
@@ -133,19 +127,14 @@ button.addEventListener("click", async () => {
         }
 
 
-        // ============================
-        // ANIMATION
-        // ============================
-
         function animate() {
 
             requestAnimationFrame(animate);
 
             analyser.getByteFrequencyData(data);
 
-
-            // Fond
-            ctx.fillStyle = "rgba(0,0,0,0.28)";
+            // Fond avec légère traînée
+            ctx.fillStyle = "rgba(0,0,0,0.22)";
 
             ctx.fillRect(
                 0,
@@ -155,14 +144,13 @@ button.addEventListener("click", async () => {
             );
 
 
-            const barWidth =
+            const width =
                 canvas.width / bars;
 
 
             for (let i = 0; i < bars; i++) {
 
-
-                // Fréquence de départ
+                // Échelle logarithmique
                 const freq1 =
                     minFreq *
                     Math.pow(
@@ -170,8 +158,6 @@ button.addEventListener("click", async () => {
                         i / bars
                     );
 
-
-                // Fréquence de fin
                 const freq2 =
                     minFreq *
                     Math.pow(
@@ -187,7 +173,6 @@ button.addEventListener("click", async () => {
                     frequencyToBin(freq2);
 
 
-                // Moyenne de la zone
                 let total = 0;
                 let count = 0;
 
@@ -211,15 +196,56 @@ button.addEventListener("click", async () => {
                     : 0;
 
 
-                // Seuil de bruit
+                // =========================
+                // NORMALISATION DYNAMIQUE
+                // =========================
+
                 if (value < 8) {
                     value = 0;
                 }
 
 
-                // Amplification
+                // La référence descend lentement
+                // et monte rapidement.
+                if (value > baseline[i]) {
+
+                    baseline[i] =
+                        baseline[i] * 0.92 +
+                        value * 0.08;
+
+                } else {
+
+                    baseline[i] =
+                        baseline[i] * 0.995 +
+                        value * 0.005;
+
+                }
+
+
+                // Rapport entre le son actuel
+                // et le niveau habituel.
+                let normalized =
+                    value /
+                    Math.max(baseline[i], 8);
+
+
+                normalized =
+                    Math.max(
+                        0,
+                        normalized - 0.35
+                    );
+
+
+                // Compression pour éviter
+                // qu'une seule fréquence domine.
+                normalized =
+                    Math.pow(normalized, 0.65);
+
+
                 let height =
-                    value * 2.8;
+                    normalized *
+                    canvas.height *
+                    0.75;
 
 
                 height =
@@ -229,30 +255,54 @@ button.addEventListener("click", async () => {
                     );
 
 
-                // ============================
+                // =========================
                 // COULEURS
-                // ============================
+                // =========================
 
                 const hue =
                     i / (bars - 1) * 300;
 
 
-                ctx.fillStyle =
+                const color =
                     `hsl(${hue},100%,55%)`;
 
 
-                ctx.shadowBlur = 12;
+                // Glow
+                ctx.shadowBlur =
+                    normalized > 0.15 ? 18 : 0;
 
                 ctx.shadowColor =
-                    `hsl(${hue},100%,50%)`;
+                    color;
+
+                ctx.fillStyle =
+                    color;
 
 
+                // Barre
                 ctx.fillRect(
-                    i * barWidth,
+                    i * width,
                     canvas.height - height,
-                    barWidth - 2,
+                    width - 3,
                     height
                 );
+
+
+                // Petit point lumineux au sommet
+                if (height > 8) {
+
+                    ctx.beginPath();
+
+                    ctx.arc(
+                        i * width + width / 2,
+                        canvas.height - height,
+                        3,
+                        0,
+                        Math.PI * 2
+                    );
+
+                    ctx.fill();
+
+                }
 
             }
 
